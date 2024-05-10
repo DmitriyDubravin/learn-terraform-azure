@@ -189,3 +189,109 @@ resource "azurerm_cosmosdb_sql_container" "stocks" {
     }
   }
 }
+
+
+
+## Storage Account
+
+resource "azurerm_storage_account" "import_service" {
+  name                                       = "dd-import-sand-ne-009"
+  location                                   = azurerm_resource_group.product_service_rg.location
+  resource_group_name                        = azurerm_resource_group.product_service_rg.name
+
+  account_tier                               = "Standard"
+  account_kind                               = "StorageV2"
+  account_replication_type                   = "LRS"
+}
+
+resource "azurerm_storage_account" "import_service_files" {
+  name                                       = "dd-import-service-files-sand-ne-009"
+  location                                   = azurerm_resource_group.product_service_rg.location
+  resource_group_name                        = azurerm_resource_group.product_service_rg.name
+
+  account_tier                               = "Standard"
+  account_kind                               = "StorageV2"
+  account_replication_type                   = "LRS"
+
+  blob_properties {
+    cors_rule {
+      allowed_headers                        = ["*"]
+      allowed_methods                        = ["PUT", "GET"]
+      allowed_origins                        = ["*"]
+      exposed_headers                        = ["*"]
+      max_age_in_seconds                     = 0
+    }
+  }
+}
+
+resource "azurerm_storage_share" "import_service" {
+  name                                       = "dd-share-import-service-sand-ne-009"
+  quota                                      = 2
+  storage_account_name                       = azurerm_storage_account.import_service.name
+}
+
+resource "azurerm_service_plan" "import_service_plan" {
+  name                                       = "dd-plan-import-service-sand-ne-009"
+  location                                   = azurerm_resource_group.product_service_rg.location
+  resource_group_name                        = azurerm_resource_group.product_service_rg.name
+
+  os_type  = "Windows"
+  sku_name = "Y1"
+}
+
+resource "azurerm_application_insights" "import_service" {
+  name                                       = "dd-appins-import-service-sand-ne-009"
+  location                                   = azurerm_resource_group.product_service_rg.location
+  resource_group_name                        = azurerm_resource_group.product_service_rg.name
+
+  application_type                           = "web"
+}
+
+resource "azurerm_windows_function_app" "import_service" {
+  name                                       = "dd-winfun-import-service-ne-009"
+  location                                   = azurerm_resource_group.product_service_rg.location
+  resource_group_name                        = azurerm_resource_group.product_service_rg.name
+
+  service_plan_id                            = azurerm_service_plan.import_service_plan.id
+  storage_account_name                       = azurerm_storage_account.import_service.name
+  storage_account_access_key                 = azurerm_storage_account.import_service.primary_access_key
+
+  functions_extension_version                = "~4"
+  builtin_logging_enabled                    = false
+
+  site_config {
+    always_on = false
+
+    application_insights_key                 = azurerm_application_insights.import_service.instrumentation_key
+    application_insights_connection_string   = azurerm_application_insights.import_servicea.connection_string
+
+    # For production systems set this to false
+    use_32_bit_worker = true
+
+    # Enable function invocations from Azure Portal.
+    cors {
+      allowed_origins = ["https://portal.azure.com", "https://rgfrontendsandne001.z16.web.core.windows.net/", "http://localhost:3000"]
+    }
+
+    application_stack {
+      node_version                           = "~16"
+    }
+  }
+
+  app_settings = {
+    WEBSITE_CONTENTAZUREFILECONNECTIONSTRING = azurerm_storage_account.import_service.primary_connection_string
+    WEBSITE_CONTENTSHARE                     = azurerm_storage_share.import_service.name
+  }
+
+  # The app settings changes cause downtime on the Function App. e.g. with Azure Function App Slots
+  # Therefore it is better to ignore those changes and manage app settings separately off the Terraform.
+  lifecycle {
+    ignore_changes = [
+      app_settings,
+      site_config["application_stack"],
+      tags["hidden-link: /app-insights-instrumentation-key"],
+      tags["hidden-link: /app-insights-resource-id"],
+      tags["hidden-link: /app-insights-conn-string"]
+    ]
+  }
+}

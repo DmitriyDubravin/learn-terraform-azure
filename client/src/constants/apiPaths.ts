@@ -4,9 +4,7 @@ const url =
 const API_PATHS = {
   product: url,
   order: url,
-  import: url,
+  import: "dd-winfun-import-service-ne-009.azure-api.net/api",
   bff: url,
   cart: url,
 };
-
-export default API_PATHS;
