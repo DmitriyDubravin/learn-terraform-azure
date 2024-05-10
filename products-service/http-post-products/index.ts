@@ -12,7 +12,7 @@ const httpTrigger: AzureFunction = async function (
   req: HttpRequest
 ): Promise<void> {
   context.log(
-    "HTTP trigger function 'http-get-product-by-id' processed a request."
+    "HTTP trigger function 'http-post-products' processed a request."
   );
 
   const cosmosClient = new CosmosClient({
@@ -23,21 +23,32 @@ const httpTrigger: AzureFunction = async function (
     .database(databaseName)
     .container(containerName);
 
-  const productId = req.params.id || req.query.id;
+  const { id, title, description, price } = req.body;
+
+  if (!(id && title && description && price)) {
+    context.res = {
+      status: 400,
+      body: "Invalid request payload",
+    };
+    return;
+  }
 
   try {
-    const {
-      resource: { id, title, description, price },
-    } = await container.item(productId, productId).read();
+    const { resource } = await container.items.upsert({
+      id,
+      title,
+      description,
+      price,
+    });
 
     context.res = {
       status: 200,
-      body: { id, title, description, price },
+      body: resource,
     };
   } catch (error) {
     context.res = {
-      status: 404,
-      body: `Document with id '${productId}' not found`,
+      status: 500,
+      body: error.message,
     };
   }
 };

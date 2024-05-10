@@ -5,39 +5,41 @@ const cosmosEndpoint = process.env.COSMOS_ENDPOINT;
 const cosmosKey = process.env.COSMOS_KEY;
 
 const databaseName = "products-db";
-const containerName = "products";
+const stocksContainerName = "stocks";
 
 const httpTrigger: AzureFunction = async function (
   context: Context,
   req: HttpRequest
 ): Promise<void> {
   context.log(
-    "HTTP trigger function 'http-get-product-by-id' processed a request."
+    "HTTP trigger function 'http-get-product-list' processed a request."
   );
 
   const cosmosClient = new CosmosClient({
     endpoint: cosmosEndpoint,
     key: cosmosKey,
   });
-  const container = cosmosClient
+  const stocksContainer = cosmosClient
     .database(databaseName)
-    .container(containerName);
-
-  const productId = req.params.id || req.query.id;
+    .container(stocksContainerName);
 
   try {
-    const {
-      resource: { id, title, description, price },
-    } = await container.item(productId, productId).read();
+    const { resources: stocksResources } = await stocksContainer.items
+      .readAll()
+      .fetchAll();
+
+    const data = stocksResources.reduce((acc, { count }) => {
+      return acc + count;
+    }, 0);
 
     context.res = {
       status: 200,
-      body: { id, title, description, price },
+      body: data,
     };
   } catch (error) {
     context.res = {
-      status: 404,
-      body: `Document with id '${productId}' not found`,
+      status: 400,
+      body: error.message,
     };
   }
 };
